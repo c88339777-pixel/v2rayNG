@@ -15,43 +15,145 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class LoginActivity : AppCompatActivity() {
-    private val prefs by lazy { getSharedPreferences("panel", MODE_PRIVATE) }
+
+    private val prefs by lazy {
+        getSharedPreferences("panel", MODE_PRIVATE)
+    }
+
+    private fun loadToken(): String? {
+        val secureToken = SecureTokenStore.get(this)
+
+        if (secureToken != null) {
+            return secureToken
+        }
+
+        val oldToken = prefs.getString("token", null)
+
+        if (!oldToken.isNullOrBlank()) {
+            return try {
+                SecureTokenStore.save(this, oldToken)
+                prefs.edit().remove("token").apply()
+                oldToken
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        return null
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_RTL
-        val saved = prefs.getString("token", null)
-        val u = EditText(this).apply { hint = "نام کاربری"; setSingleLine() }
-        val p = EditText(this).apply { hint = "رمز عبور"; setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        val msg = TextView(this).apply { gravity = Gravity.CENTER }
-        val btn = Button(this).apply { text = "ورود و دریافت کانفیگ‌ها" }
+
+        val u = EditText(this).apply {
+            hint = "نام کاربری"
+            setSingleLine()
+        }
+
+        val p = EditText(this).apply {
+            hint = "رمز عبور"
+            setSingleLine()
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+
+        val msg = TextView(this).apply {
+            gravity = Gravity.CENTER
+        }
+
+        val btn = Button(this).apply {
+            text = "ورود و دریافت کانفیگ‌ها"
+        }
+
         setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(60, 160, 60, 60)
-            addView(TextView(context).apply { text = "VPN Hub"; textSize = 28f; gravity = Gravity.CENTER })
-            addView(u); addView(p); addView(btn); addView(msg)
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 160, 60, 60)
+
+            addView(TextView(context).apply {
+                text = "VPN Hub"
+                textSize = 28f
+                gravity = Gravity.CENTER
+            })
+
+            addView(u)
+            addView(p)
+            addView(btn)
+            addView(msg)
         })
 
         fun sync(token: String) = lifecycleScope.launch {
             msg.text = "در حال دریافت کانفیگ‌ها..."
-            val r = withContext(Dispatchers.IO) { PanelApi.configs(token) }
+
+            val r = withContext(Dispatchers.IO) {
+                PanelApi.configs(token)
+            }
+
             when {
                 r.ok && r.links.isNotEmpty() -> {
-                    withContext(Dispatchers.IO) { AngConfigManager.importBatchConfig(r.links.joinToString("\n"), "", false) }
-                    startActivity(Intent(this@LoginActivity, MainActivity::class.java)); finish()
+                    withContext(Dispatchers.IO) {
+                        AngConfigManager.importBatchConfig(
+                            r.links.joinToString("\n"),
+                            "",
+                            false
+                        )
+                    }
+
+                    startActivity(
+                        Intent(
+                            this@LoginActivity,
+                            MainActivity::class.java
+                        )
+                    )
+                    finish()
                 }
-                r.ok -> msg.text = "هنوز کانفیگی به حساب شما اختصاص داده نشده است"
-                r.token == "expired" -> { prefs.edit().remove("token").apply(); msg.text = "نشست تمام شد؛ دوباره وارد شوید" }
-                else -> msg.text = r.msg
+
+                r.ok -> {
+                    msg.text =
+                        "هنوز کانفیگی به حساب شما اختصاص داده نشده است"
+                }
+
+                r.token == "expired" -> {
+                    SecureTokenStore.clear(this@LoginActivity)
+                    prefs.edit().remove("token").apply()
+                    msg.text = "نشست تمام شد؛ دوباره وارد شوید"
+                }
+
+                else -> {
+                    msg.text = r.msg
+                }
             }
         }
 
         btn.setOnClickListener {
             lifecycleScope.launch {
                 msg.text = "در حال ورود..."
-                val r = withContext(Dispatchers.IO) { PanelApi.login(u.text.toString().trim(), p.text.toString()) }
-                if (r.ok) { prefs.edit().putString("token", r.token).apply(); sync(r.token!!) } else msg.text = r.msg
+
+                val r = withContext(Dispatchers.IO) {
+                    PanelApi.login(
+                        u.text.toString().trim(),
+                        p.text.toString()
+                    )
+                }
+
+                if (r.ok && !r.token.isNullOrBlank()) {
+                    try {
+                        SecureTokenStore.save(this@LoginActivity, r.token)
+                        sync(r.token)
+                    } catch (e: Exception) {
+                        msg.text = "خطا در ذخیره امن اطلاعات ورود"
+                    }
+                } else {
+                    msg.text = r.msg
+                }
             }
         }
-        if (saved != null) sync(saved)
+
+        val saved = loadToken()
+
+        if (saved != null) {
+            sync(saved)
+        }
     }
 }
