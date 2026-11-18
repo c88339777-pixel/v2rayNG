@@ -20,6 +20,8 @@ class LoginActivity : AppCompatActivity() {
         getSharedPreferences("panel", MODE_PRIVATE)
     }
 
+    private var loading = false
+
     private fun loadToken(): String? {
         val secureToken = SecureTokenStore.get(this)
 
@@ -34,7 +36,7 @@ class LoginActivity : AppCompatActivity() {
                 SecureTokenStore.save(this, oldToken)
                 prefs.edit().remove("token").apply()
                 oldToken
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
@@ -42,10 +44,11 @@ class LoginActivity : AppCompatActivity() {
         return null
     }
 
-    override fun onCreate(b: Bundle?) {
-        super.onCreate(b)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-        window.decorView.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        window.decorView.layoutDirection =
+            View.LAYOUT_DIRECTION_RTL
 
         val u = EditText(this).apply {
             hint = "نام کاربری"
@@ -55,97 +58,149 @@ class LoginActivity : AppCompatActivity() {
         val p = EditText(this).apply {
             hint = "رمز عبور"
             setSingleLine()
-            inputType = InputType.TYPE_CLASS_TEXT or
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
 
         val msg = TextView(this).apply {
             gravity = Gravity.CENTER
+            textSize = 14f
         }
 
         val btn = Button(this).apply {
             text = "ورود و دریافت کانفیگ‌ها"
         }
 
-        setContentView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(60, 160, 60, 60)
+        setContentView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(60, 160, 60, 60)
 
-            addView(TextView(context).apply {
-                text = "VPN Hub"
-                textSize = 28f
-                gravity = Gravity.CENTER
-            })
+                addView(
+                    TextView(context).apply {
+                        text = "VPN Hub"
+                        textSize = 28f
+                        gravity = Gravity.CENTER
+                    }
+                )
 
-            addView(u)
-            addView(p)
-            addView(btn)
-            addView(msg)
-        })
-
-        fun sync(token: String) = lifecycleScope.launch {
-            msg.text = "در حال دریافت کانفیگ‌ها..."
-
-            val r = withContext(Dispatchers.IO) {
-                PanelApi.configs(token)
+                addView(u)
+                addView(p)
+                addView(btn)
+                addView(msg)
             }
+        )
 
-            when {
-                r.ok && r.links.isNotEmpty() -> {
-                    withContext(Dispatchers.IO) {
-                        AngConfigManager.importBatchConfig(
-                            r.links.joinToString("\n"),
-                            "",
-                            false
-                        )
+        fun setLoading(value: Boolean, text: String) {
+            loading = value
+            btn.isEnabled = !value
+            btn.text = if (value) "لطفاً صبر کنید..." else
+                "ورود و دریافت کانفیگ‌ها"
+            msg.text = text
+        }
+
+        fun sync(token: String) {
+            if (loading) return
+
+            lifecycleScope.launch {
+                setLoading(true, "در حال دریافت کانفیگ‌ها...")
+
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        PanelApi.configs(token)
                     }
 
-                    startActivity(
-                        Intent(
-                            this@LoginActivity,
-                            MainActivity::class.java
-                        )
+                    when {
+                        result.ok && result.links.isNotEmpty() -> {
+
+                            val imported = withContext(Dispatchers.IO) {
+                                AngConfigManager.importBatchConfig(
+                                    result.links.joinToString("\n"),
+                                    "",
+                                    true
+                                )
+                            }
+
+                            if (imported.first <= 0) {
+                                setLoading(
+                                    false,
+                                    "کانفیگ دریافت شد، اما وارد برنامه نشد. قالب کانفیگ‌ها را بررسی کنید."
+                                )
+                                return@launch
+                            }
+
+                            startActivity(
+                                Intent(
+                                    this@LoginActivity,
+                                    MainActivity::class.java
+                                )
+                            )
+
+                            finish()
+                        }
+
+                        result.ok -> {
+                            setLoading(
+                                false,
+                                "هنوز کانفیگی به حساب شما اختصاص داده نشده است."
+                            )
+                        }
+
+                        result.token == "expired" -> {
+                            SecureTokenStore.clear(this@LoginActivity)
+                            prefs.edit().remove("token").apply()
+
+                            setLoading(
+                                false,
+                                "نشست شما تمام شده است؛ دوباره وارد شوید."
+                            )
+                        }
+
+                        else -> {
+                            setLoading(false, result.msg)
+                        }
+                    }
+
+                } catch (_: Exception) {
+                    setLoading(
+                        false,
+                        "خطای غیرمنتظره هنگام دریافت کانفیگ‌ها"
                     )
-                    finish()
-                }
-
-                r.ok -> {
-                    msg.text =
-                        "هنوز کانفیگی به حساب شما اختصاص داده نشده است"
-                }
-
-                r.token == "expired" -> {
-                    SecureTokenStore.clear(this@LoginActivity)
-                    prefs.edit().remove("token").apply()
-                    msg.text = "نشست تمام شد؛ دوباره وارد شوید"
-                }
-
-                else -> {
-                    msg.text = r.msg
                 }
             }
         }
 
         btn.setOnClickListener {
-            lifecycleScope.launch {
-                msg.text = "در حال ورود..."
+            if (loading) return@setOnClickListener
 
-                val r = withContext(Dispatchers.IO) {
+            lifecycleScope.launch {
+                setLoading(true, "در حال ورود...")
+
+                val result = withContext(Dispatchers.IO) {
                     PanelApi.login(
                         u.text.toString().trim(),
                         p.text.toString()
                     )
                 }
 
-                if (r.ok && !r.token.isNullOrBlank()) {
+                if (result.ok && !result.token.isNullOrBlank()) {
                     try {
-                        SecureTokenStore.save(this@LoginActivity, r.token)
-                        sync(r.token)
-                    } catch (e: Exception) {
-                        msg.text = "خطا در ذخیره امن اطلاعات ورود"
+                        SecureTokenStore.save(
+                            this@LoginActivity,
+                            result.token
+                        )
+
+                        sync(result.token)
+
+                    } catch (_: Exception) {
+                        setLoading(
+                            false,
+                            "خطا در ذخیره امن اطلاعات ورود"
+                        )
                     }
                 } else {
-                    msg.text = r.msg
+                    setLoading(false, result.msg)
                 }
             }
         }
