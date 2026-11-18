@@ -46,7 +46,7 @@ object SecureTokenStore {
         return generator.generateKey()
     }
 
-    fun save(context: Context, token: String) {
+    fun save(context: Context, token: String, slot: String = "") {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getKey())
 
@@ -57,17 +57,17 @@ object SecureTokenStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(
-                "iv",
+                "iv$slot",
                 Base64.encodeToString(cipher.iv, Base64.NO_WRAP)
             )
             .putString(
-                "data",
+                "data$slot",
                 Base64.encodeToString(encrypted, Base64.NO_WRAP)
             )
             .apply()
     }
 
-    fun get(context: Context): String? {
+    fun get(context: Context, slot: String = ""): String? {
         return try {
             val prefs = context.getSharedPreferences(
                 PREFS,
@@ -75,12 +75,12 @@ object SecureTokenStore {
             )
 
             val iv = Base64.decode(
-                prefs.getString("iv", null) ?: return null,
+                prefs.getString("iv$slot", null) ?: return null,
                 Base64.NO_WRAP
             )
 
             val data = Base64.decode(
-                prefs.getString("data", null) ?: return null,
+                prefs.getString("data$slot", null) ?: return null,
                 Base64.NO_WRAP
             )
 
@@ -96,9 +96,17 @@ object SecureTokenStore {
                 StandardCharsets.UTF_8
             )
         } catch (e: Exception) {
-            clear(context)
+            clear(context, slot)
             null
         }
+    }
+
+    fun clear(context: Context, slot: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("iv$slot")
+            .remove("data$slot")
+            .apply()
     }
 
     fun clear(context: Context) {
