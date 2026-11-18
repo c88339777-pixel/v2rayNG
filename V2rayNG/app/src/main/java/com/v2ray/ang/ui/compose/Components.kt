@@ -108,12 +108,16 @@ fun AppTopBar(
                 actionIconContentColor = MaterialTheme.colorScheme.onSurface
             )
         )
+
         AnimatedVisibility(
             visible = isLoading,
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.secondary
+            )
         }
     }
 }
@@ -125,14 +129,34 @@ private fun SearchInputField(
     placeholder: String?
 ) {
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
-            textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
-            placeholder = { if (placeholder != null) Text(placeholder, style = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)) },
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp
+            ),
+            placeholder = {
+                if (placeholder != null) {
+                    Text(
+                        placeholder,
+                        style = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 16.sp
+                        )
+                    )
+                }
+            },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
@@ -149,9 +173,13 @@ private fun SearchInputField(
                 .weight(1f)
                 .focusRequester(focusRequester)
         )
+
         if (query.isNotEmpty()) {
             IconButton(onClick = { onQueryChange("") }) {
-                Icon(painterResource(android.R.drawable.ic_menu_close_clear_cancel), "Clear")
+                Icon(
+                    painterResource(android.R.drawable.ic_menu_close_clear_cancel),
+                    "Clear"
+                )
             }
         }
     }
@@ -167,6 +195,7 @@ fun AppListItem(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -194,7 +223,9 @@ fun AppListItem(
             error = painterResource(R.drawable.ic_image_24dp),
             fallback = painterResource(R.drawable.ic_image_24dp)
         )
+
         Spacer(modifier = Modifier.width(16.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = appName,
@@ -202,7 +233,9 @@ fun AppListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+
             Spacer(modifier = Modifier.height(2.dp))
+
             Text(
                 text = packageName,
                 style = MaterialTheme.typography.bodySmall,
@@ -211,10 +244,13 @@ fun AppListItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
+
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.secondary
+            )
         )
     }
 }
@@ -226,18 +262,26 @@ fun ItemDivider() {
 
 @Composable
 fun AppDivider(modifier: Modifier = Modifier) {
-    val color = if (LocalDarkTheme.current) dividerColorDark else dividerColorLight
-    HorizontalDivider(modifier = modifier.fillMaxWidth(), thickness = 1.dp, color = color)
+    HorizontalDivider(
+        modifier = modifier.fillMaxWidth(),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant
+    )
 }
 
 @Composable
 fun NavigationBarsSpacer(modifier: Modifier = Modifier) {
-    Spacer(modifier = modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    Spacer(
+        modifier = modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)
+    )
 }
 
 @Composable
 fun NavigationBarsBottomPadding(): PaddingValues {
-    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottom = WindowInsets.navigationBars
+        .asPaddingValues()
+        .calculateBottomPadding()
+
     return PaddingValues(bottom = bottom)
 }
 
@@ -253,10 +297,18 @@ fun VersionInfoBlock(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = versionText, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = versionText,
+            style = MaterialTheme.typography.bodySmall
+        )
+
         if (appIdText != null) {
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = appIdText, style = MaterialTheme.typography.bodySmall)
+
+            Text(
+                text = appIdText,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -270,10 +322,12 @@ private fun reorderableElevation(isDragging: Boolean) = animateDpAsState(
 @Composable
 fun ReorderableCollectionItemScope.reorderableDragHandle(): Modifier {
     val hapticFeedback = LocalHapticFeedback.current
+
     return Modifier.longPressDraggableHandle(
         onDragStarted = {
-            // Platform haptics honor the user's touch-feedback setting.
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+            hapticFeedback.performHapticFeedback(
+                HapticFeedbackType.GestureThresholdActivate
+            )
         }
     )
 }
@@ -285,6 +339,7 @@ fun ReorderableListItem(
     content: @Composable RowScope.() -> Unit
 ) {
     val elevation by reorderableElevation(isDragging)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shadowElevation = elevation
@@ -306,6 +361,7 @@ fun ReorderableGridItem(
     content: @Composable () -> Unit
 ) {
     val elevation by reorderableElevation(isDragging)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
