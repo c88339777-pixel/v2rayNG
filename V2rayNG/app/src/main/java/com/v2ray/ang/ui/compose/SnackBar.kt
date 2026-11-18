@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -54,6 +55,7 @@ object AppSnackbarManager {
         extraBufferCapacity = 32,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+
     val messages = _messages.asSharedFlow()
 
     fun hasActiveHost(): Boolean = _messages.subscriptionCount.value > 0
@@ -64,6 +66,7 @@ object AppSnackbarManager {
         long: Boolean = false,
     ): Boolean {
         if (!hasActiveHost()) return false
+
         return _messages.tryEmit(
             AppSnackbarMessage(
                 message = message,
@@ -81,13 +84,19 @@ class AppSnackbarController(
     private var currentId = 0
     private var currentShowTime = 0L
 
-    fun show(message: CharSequence, type: ToastType = ToastType.NORMAL, long: Boolean = false) {
+    fun show(
+        message: CharSequence,
+        type: ToastType = ToastType.NORMAL,
+        long: Boolean = false
+    ) {
         val id = ++currentId
+
         scope.launch {
             if (currentShowTime != 0L) {
                 val elapsed = System.currentTimeMillis() - currentShowTime
+
                 if (elapsed < SnackbarThrottleMs) {
-                    delay((SnackbarThrottleMs - elapsed))
+                    delay(SnackbarThrottleMs - elapsed)
                 }
             }
 
@@ -98,9 +107,14 @@ class AppSnackbarController(
                     AppSnackbarVisuals(
                         message = message.toString(),
                         type = type,
-                        duration = if (long) SnackbarDuration.Long else SnackbarDuration.Short
+                        duration = if (long) {
+                            SnackbarDuration.Long
+                        } else {
+                            SnackbarDuration.Short
+                        }
                     )
                 )
+
                 if (id == currentId) {
                     currentShowTime = 0L
                 }
@@ -127,7 +141,10 @@ val LocalAppSnackbar = staticCompositionLocalOf<AppSnackbarController> {
 fun rememberAppSnackbarController(): AppSnackbarController {
     val hostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    return remember(hostState, scope) { AppSnackbarController(hostState, scope) }
+
+    return remember(hostState, scope) {
+        AppSnackbarController(hostState, scope)
+    }
 }
 
 @Composable
@@ -165,6 +182,7 @@ fun AppSnackbarHost(
     BoxWithConstraints(modifier = modifier) {
         val maxSnackbarWidth = maxWidth * ToastMaxWidthFraction
         val density = LocalDensity.current
+
         val navigationBarHeight = with(density) {
             WindowInsets.navigationBars.getBottom(this).toDp()
         }
@@ -173,20 +191,27 @@ fun AppSnackbarHost(
             hostState = hostState,
             modifier = Modifier.fillMaxSize()
         ) { data ->
-            val type = (data.visuals as? AppSnackbarVisuals)?.type ?: ToastType.NORMAL
+            val type = (data.visuals as? AppSnackbarVisuals)?.type
+                ?: ToastType.NORMAL
 
-            val isDark = LocalDarkTheme.current
             val bgColor = when (type) {
-                ToastType.NORMAL -> if (isDark) toastNormalBgDark else toastNormalBgLight
+                ToastType.NORMAL -> MaterialTheme.colorScheme.surface
                 ToastType.SUCCESS -> toastSuccessBg
                 ToastType.ERROR -> toastErrorBg
                 ToastType.INFO -> toastInfoBg
             }
 
+            val textColor = when (type) {
+                ToastType.NORMAL -> MaterialTheme.colorScheme.onSurface
+                else -> toastTextColor
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = ToastBottomOffset + navigationBarHeight),
+                    .padding(
+                        bottom = ToastBottomOffset + navigationBarHeight
+                    ),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Surface(
@@ -207,7 +232,7 @@ fun AppSnackbarHost(
                     ) {
                         Text(
                             text = data.visuals.message,
-                            color = toastTextColor,
+                            color = textColor,
                             fontSize = 14.sp,
                             maxLines = ToastMaxLines,
                             overflow = TextOverflow.Ellipsis,
