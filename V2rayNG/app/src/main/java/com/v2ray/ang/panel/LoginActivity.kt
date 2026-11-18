@@ -95,14 +95,15 @@ class LoginActivity : AppCompatActivity() {
         fun setLoading(value: Boolean, text: String) {
             loading = value
             btn.isEnabled = !value
-            btn.text = if (value) "لطفاً صبر کنید..." else
+            btn.text = if (value) {
+                "لطفاً صبر کنید..."
+            } else {
                 "ورود و دریافت کانفیگ‌ها"
+            }
             msg.text = text
         }
 
         fun sync(token: String) {
-            if (loading) return
-
             lifecycleScope.launch {
                 setLoading(true, "در حال دریافت کانفیگ‌ها...")
 
@@ -149,6 +150,7 @@ class LoginActivity : AppCompatActivity() {
 
                         result.token == "expired" -> {
                             SecureTokenStore.clear(this@LoginActivity)
+                            PanelApi.clearSession()
                             prefs.edit().remove("token").apply()
 
                             setLoading(
@@ -186,10 +188,12 @@ class LoginActivity : AppCompatActivity() {
 
                 if (result.ok && !result.token.isNullOrBlank()) {
                     try {
-                        SecureTokenStore.save(
-                            this@LoginActivity,
-                            result.token
-                        )
+                        withContext(Dispatchers.IO) {
+                            SecureTokenStore.save(
+                                this@LoginActivity,
+                                result.token
+                            )
+                        }
 
                         sync(result.token)
 
