@@ -62,23 +62,37 @@ fun ConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = title?.let { { Text(it) } },
+        title = title?.let {
+            {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
         text = {
             Text(
                 text = message,
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = messageTextAlign
             )
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(); onDismiss() },
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
                 modifier = Modifier.focusRequester(confirmFocusRequester)
             ) {
                 confirmIcon?.invoke()
                 if (confirmIcon != null) Spacer(Modifier.width(8.dp))
-                Text(confirmText)
+                Text(
+                    confirmText,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         },
         dismissButton = dismissText?.let { text ->
@@ -87,7 +101,10 @@ fun ConfirmDialog(
                     onClick = onDismiss,
                     modifier = Modifier.focusRequester(dismissFocusRequester)
                 ) {
-                    Text(text)
+                    Text(
+                        text,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         },
@@ -110,7 +127,8 @@ fun DeleteConfirmDialog(
             Icon(
                 painter = painterResource(R.drawable.ic_delete_24dp),
                 contentDescription = null,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.error
             )
         },
         onConfirm = onConfirm,
@@ -137,7 +155,12 @@ fun InputDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = {
+            Text(
+                title,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -147,17 +170,26 @@ fun InputDialog(
                     OutlinedTextField(
                         value = field.value,
                         onValueChange = { onFieldChange(index, it) },
-                        label = { Text(field.label) },
-                        singleLine = false,
+                        label = {
+                            Text(
+                                field.label,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = field.singleLine,
                         maxLines = 5,
                         visualTransformation = field.visualTransformation,
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colorScheme.secondary,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary,
                             selectionColors = TextSelectionColors(
-                                handleColor = MaterialTheme.colorScheme.secondary,
-                                backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                handleColor = MaterialTheme.colorScheme.primary,
+                                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                             )
                         ),
                         modifier = Modifier.fillMaxWidth()
@@ -166,10 +198,20 @@ fun InputDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmText) }
+            TextButton(onClick = onConfirm) {
+                Text(
+                    confirmText,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(dismissText) }
+            TextButton(onClick = onDismiss) {
+                Text(
+                    dismissText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.surface
     )
@@ -181,6 +223,7 @@ fun QRCodeDialog(
     onDismiss: () -> Unit
 ) {
     if (bitmap == null) return
+
     AlertDialog(
         onDismissRequest = onDismiss,
         text = {
@@ -193,17 +236,17 @@ fun QRCodeDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+            TextButton(onClick = onDismiss) {
+                Text(
+                    stringResource(R.string.action_close),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.surface
     )
 }
 
-/**
- * When showRadio is true, displays RadioButton (single selection mode);
- * otherwise, plain clickable list mode.
- * The selectedOption parameter is used to highlight the selected item only when showRadio is true.
- */
 @Composable
 fun <T> SelectListDialog(
     options: List<T>,
@@ -216,20 +259,34 @@ fun <T> SelectListDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = title?.let { { Text(it) } },
+        title = title?.let {
+            {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
         text = {
             LazyColumn {
                 items(options) { option ->
                     val isSelected = option == selectedOption
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
-                                if (showRadio) Modifier.selectable(
-                                    selected = isSelected,
-                                    onClick = { onSelected(option) },
-                                    role = Role.RadioButton
-                                ) else Modifier.clickable { onSelected(option) }
+                                if (showRadio) {
+                                    Modifier.selectable(
+                                        selected = isSelected,
+                                        onClick = { onSelected(option) },
+                                        role = Role.RadioButton
+                                    )
+                                } else {
+                                    Modifier.clickable {
+                                        onSelected(option)
+                                    }
+                                }
                             )
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -237,13 +294,20 @@ fun <T> SelectListDialog(
                         if (showRadio) {
                             RadioButton(
                                 selected = isSelected,
-                                onClick = null
+                                onClick = null,
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = MaterialTheme.colorScheme.primary,
+                                    unselectedColor = MaterialTheme.colorScheme.outline
+                                )
                             )
+
                             Spacer(modifier = Modifier.width(8.dp))
                         }
+
                         Text(
                             text = optionText(option),
                             style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -253,7 +317,10 @@ fun <T> SelectListDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
+                Text(
+                    stringResource(R.string.action_cancel),
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         },
         containerColor = MaterialTheme.colorScheme.surface
