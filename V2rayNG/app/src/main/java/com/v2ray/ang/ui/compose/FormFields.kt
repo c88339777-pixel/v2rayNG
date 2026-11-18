@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -61,10 +62,10 @@ fun FormTextField(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.secondary,
+                cursorColor = MaterialTheme.colorScheme.primary,
                 selectionColors = TextSelectionColors(
-                    handleColor = MaterialTheme.colorScheme.secondary,
-                    backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    handleColor = MaterialTheme.colorScheme.primary,
+                    backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                 )
             ),
             modifier = Modifier.fillMaxWidth()
@@ -89,6 +90,7 @@ fun FormDropdownField(
     val menuScrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
     val visibleOptions = remember(value, options, editable) {
         if (editable) filterDropdownOptions(options, value) else options
     }
@@ -97,9 +99,11 @@ fun FormDropdownField(
         expanded = expanded,
         onExpandedChange = { newExpanded ->
             if (!enabled) return@ExposedDropdownMenuBox
+
             if (!editable && newExpanded) {
                 keyboardController?.hide()
             }
+
             expanded = newExpanded
         },
         modifier = modifier
@@ -111,31 +115,35 @@ fun FormDropdownField(
             onValueChange = {
                 if (editable) {
                     onValueChange(it)
-                    // Typing is the search: open the menu as soon as the text matches an option, so
-                    // a name that is already filled in can be replaced without tapping the field
-                    // again, and close it instead of showing an empty menu when nothing matches.
                     expanded = filterDropdownOptions(options, it).isNotEmpty()
                 }
             },
             readOnly = !editable,
             enabled = enabled,
             label = { Text(label) },
-            placeholder = { if (placeholder != null) Text(placeholder) },
+            placeholder = {
+                if (placeholder != null) Text(placeholder)
+            },
             supportingText = supportingText?.let { { Text(it) } },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.secondary,
+                cursorColor = MaterialTheme.colorScheme.primary,
                 selectionColors = TextSelectionColors(
-                    handleColor = MaterialTheme.colorScheme.secondary,
-                    backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    handleColor = MaterialTheme.colorScheme.primary,
+                    backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                 )
             ),
             modifier = Modifier
                 .menuAnchor(
-                    type = if (editable) ExposedDropdownMenuAnchorType.PrimaryEditable
-                    else ExposedDropdownMenuAnchorType.PrimaryNotEditable
+                    type = if (editable) {
+                        ExposedDropdownMenuAnchorType.PrimaryEditable
+                    } else {
+                        ExposedDropdownMenuAnchorType.PrimaryNotEditable
+                    }
                 )
                 .fillMaxWidth()
                 .onFocusChanged { focusState ->
@@ -144,6 +152,7 @@ fun FormDropdownField(
                     }
                 }
         )
+
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -168,15 +177,20 @@ fun FormDropdownField(
 /**
  * Options an editable dropdown offers for the text the user has typed.
  *
- * A blank query, or one that already equals an option, keeps every option so the menu still works
- * as a plain picker. Any other query keeps the options containing it anywhere, ignoring case, so a
- * partly remembered or mid-string fragment still finds its entry.
+ * A blank query, or one that already equals an option, keeps every option.
+ * Other queries keep options containing the text, ignoring case.
  */
-internal fun filterDropdownOptions(options: List<String>, query: String): List<String> {
+internal fun filterDropdownOptions(
+    options: List<String>,
+    query: String
+): List<String> {
     val trimmed = query.trim()
+
     return if (trimmed.isEmpty() || trimmed in options) {
         options
     } else {
-        options.filter { it.contains(trimmed, ignoreCase = true) }
+        options.filter {
+            it.contains(trimmed, ignoreCase = true)
+        }
     }
 }
