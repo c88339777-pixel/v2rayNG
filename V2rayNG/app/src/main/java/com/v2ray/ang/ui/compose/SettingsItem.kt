@@ -31,14 +31,22 @@ import androidx.compose.ui.unit.dp
 import com.v2ray.ang.R
 
 @Composable
-fun PreferenceGroupHeader(title: String, modifier: Modifier = Modifier) {
+fun PreferenceGroupHeader(
+    title: String,
+    modifier: Modifier = Modifier
+) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.secondary,
+        color = MaterialTheme.colorScheme.primary,
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                top = 16.dp,
+                bottom = 8.dp
+            )
     )
 }
 
@@ -59,13 +67,14 @@ fun CollapsiblePreferenceGroupHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f)
         )
+
         Icon(
             painter = painterResource(R.drawable.ic_expand_more_24dp),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.secondary,
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .size(24.dp)
                 .rotate(if (expanded) 180f else 0f)
@@ -83,15 +92,31 @@ private fun SettingsItemRow(
     modifier: Modifier = Modifier,
     trailing: @Composable (() -> Unit)? = null
 ) {
-    val titleColor = if (enabled) MaterialTheme.colorScheme.onSurface
-    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    val descriptionColor = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
-    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+    val titleColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    }
+
+    val descriptionColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        enabled = enabled,
+                        onClick = onClick
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -102,16 +127,20 @@ private fun SettingsItemRow(
                 modifier = Modifier.size(24.dp),
                 tint = titleColor
             )
+
             Spacer(modifier = Modifier.width(16.dp))
         }
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = titleColor
             )
+
             if (!description.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
@@ -119,6 +148,7 @@ private fun SettingsItemRow(
                 )
             }
         }
+
         trailing?.invoke()
     }
 }
@@ -135,6 +165,7 @@ fun SettingsEditItem(
     keyboardNumber: Boolean = false
 ) {
     var showDialog by remember { mutableStateOf(false) }
+
     val description = if (isPassword) {
         if (value.isEmpty()) null else "******"
     } else {
@@ -148,12 +179,15 @@ fun SettingsEditItem(
         enabled = enabled,
         onClick = if (enabled) {
             { showDialog = true }
-        } else null,
+        } else {
+            null
+        },
         modifier = modifier
     )
 
     if (showDialog) {
         var text by remember { mutableStateOf(value) }
+
         InputDialog(
             title = title,
             fields = listOf(
@@ -163,11 +197,18 @@ fun SettingsEditItem(
                     visualTransformation = VisualTransformation.None
                 )
             ),
-            onFieldChange = { _, v -> text = v },
+            onFieldChange = { _, v ->
+                text = v
+            },
             confirmText = stringResource(R.string.action_ok),
             dismissText = stringResource(R.string.action_cancel),
-            onConfirm = { showDialog = false; onValueChanged(text) },
-            onDismiss = { showDialog = false }
+            onConfirm = {
+                showDialog = false
+                onValueChanged(text)
+            },
+            onDismiss = {
+                showDialog = false
+            }
         )
     }
 }
@@ -184,8 +225,12 @@ fun SettingsListItem(
     enabled: Boolean = true
 ) {
     var showDialog by remember { mutableStateOf(false) }
+
     val options = entries.zip(values)
-    val selectedOption = options.find { it.second == selectedValue } ?: options.firstOrNull()
+    val selectedOption = options.find {
+        it.second == selectedValue
+    } ?: options.firstOrNull()
+
     val summary = selectedOption?.first.orEmpty()
 
     SettingsItemRow(
@@ -195,7 +240,9 @@ fun SettingsListItem(
         enabled = enabled,
         onClick = if (enabled) {
             { showDialog = true }
-        } else null,
+        } else {
+            null
+        },
         modifier = modifier
     )
 
@@ -209,7 +256,9 @@ fun SettingsListItem(
                 showDialog = false
                 onSelected(option.second)
             },
-            onDismiss = { showDialog = false },
+            onDismiss = {
+                showDialog = false
+            },
             showRadio = true
         )
     }
@@ -250,16 +299,23 @@ fun SettingsSwitchItem(
         enabled = enabled,
         onClick = if (enabled) {
             { onCheckedChange(!checked) }
-        } else null,
+        } else {
+            null
+        },
         modifier = modifier,
         trailing = {
             Switch(
                 checked = checked,
-                onCheckedChange = if (enabled) onCheckedChange else null,
+                onCheckedChange = if (enabled) {
+                    onCheckedChange
+                } else {
+                    null
+                },
                 modifier = Modifier.scale(0.8f),
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                    checkedTrackColor = MaterialTheme.colorScheme.secondary
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    checkedBorderColor = MaterialTheme.colorScheme.primary
                 ),
                 enabled = enabled
             )
