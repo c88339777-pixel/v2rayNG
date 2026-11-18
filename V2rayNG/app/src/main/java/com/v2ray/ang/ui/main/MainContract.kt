@@ -69,4 +69,7 @@ sealed interface MainAction {
     data class ImportBatchConfig(val configText: String) : MainAction
 
     data object LocateHandled : MainAction
+
+    // خروج از حساب پنل
+    data object Logout : MainAction
 }
