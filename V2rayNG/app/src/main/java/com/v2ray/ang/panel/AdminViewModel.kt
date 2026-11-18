@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -19,12 +23,14 @@ data class AdminUiState(
     val users: List<AdminUser> = emptyList(),
     /** Config IDs assigned to the user currently open in the editor. */
     val assignedConfigIds: Set<String> = emptySet(),
+    val assignedUserId: String? = null,
     val sessionExpired: Boolean = false,
 )
 
 class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(AdminUiState())
+    private val assignmentMutex = Mutex()
     val uiState: StateFlow<AdminUiState> = _uiState.asStateFlow()
 
     init {
@@ -80,8 +86,15 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadLists() {
-        val (configResult, configs) = withContext(Dispatchers.IO) { AdminApi.listConfigs() }
-        val (userResult, users) = withContext(Dispatchers.IO) { AdminApi.listUsers() }
+        val (configData, userData) = coroutineScope {
+            val configsTask = async(Dispatchers.IO) { AdminApi.listConfigs() }
+            val usersTask = async(Dispatchers.IO) { AdminApi.listUsers() }
+            configsTask.await() to usersTask.await()
+        }
+        val configResult = configData.first
+        val configs = configData.second
+        val userResult = userData.first
+        val users = userData.second
 
         if (!configResult.ok) {
             handleFailure(configResult)
@@ -230,10 +243,11 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadAssigned(userId: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(assignedConfigIds = emptySet()) }
-
+            // Reset immediately and tag the state to prevent a late response for a previous user
+            // from replacing the assignments currently displayed in the dialog.
+            _uiState.update { it.copy(assignedUserId = userId, assignedConfigIds = emptySet()) }
             val (result, ids) = withContext(Dispatchers.IO) { AdminApi.userConfigIds(userId) }
-
+            if (_uiState.value.assignedUserId != userId) return@launch
             if (result.ok) {
                 _uiState.update { it.copy(assignedConfigIds = ids) }
             } else {
@@ -244,21 +258,26 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAssigned(userId: String, configId: String, assigned: Boolean) {
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                if (assigned) AdminApi.assignConfig(userId, configId)
-                else AdminApi.unassignConfig(userId, configId)
-            }
-
-            // 409 = already assigned: the screen is simply out of date, so treat it as done.
+            assignmentMutex.withLock {
+                // Ignore callbacks from a dialog that has already switched to another user.
+                if (_uiState.value.assignedUserId != userId) return@withLock
+                val result = withContext(Dispatchers.IO) {
+                    if (assigned) AdminApi.assignConfig(userId, configId)
+                    else AdminApi.unassignConfig(userId, configId)
+                }
+            // A response is only allowed to update the currently-open user's state.
+            if (_uiState.value.assignedUserId != userId) return@launch
+            // 409 = already assigned: treat as idempotent success.
             if (result.ok || result.code == 409) {
-                _uiState.update {
-                    it.copy(
-                        assignedConfigIds = if (assigned) it.assignedConfigIds + configId
-                        else it.assignedConfigIds - configId
+                _uiState.update { current ->
+                    if (current.assignedUserId != userId) current else current.copy(
+                        assignedConfigIds = if (assigned) current.assignedConfigIds + configId
+                        else current.assignedConfigIds - configId
                     )
                 }
-            } else {
-                handleFailure(result)
+                } else {
+                    handleFailure(result)
+                }
             }
         }
     }
