@@ -240,6 +240,43 @@ object PanelApi {
         }
     }
 
+    fun logout(): Res {
+        return try {
+            val request = Request.Builder()
+                .url("$BASE/api/user/logout")
+                .post("".toRequestBody(jsonType))
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+
+                val text = response.body?.string().orEmpty()
+
+                cookieJar.clear()
+
+                Res(
+                    ok = response.isSuccessful,
+                    msg = if (response.isSuccessful) {
+                        "با موفقیت از حساب خارج شدید"
+                    } else {
+                        errorMessage(
+                            text,
+                            "خروج از حساب ناموفق بود"
+                        )
+                    },
+                    statusCode = response.code
+                )
+            }
+
+        } catch (_: IOException) {
+            cookieJar.clear()
+            Res(false, "ارتباط با سرور برقرار نشد؛ نشست محلی پاک شد")
+        } catch (_: Exception) {
+            cookieJar.clear()
+            Res(false, "خطا هنگام خروج از حساب")
+        }
+    }
+
     fun clearSession() {
         cookieJar.clear()
     }
