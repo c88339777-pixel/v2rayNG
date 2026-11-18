@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.compose
 
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -13,7 +14,12 @@ fun <T> AppDropdownMenuItems(
 ) {
     items.forEach { item ->
         DropdownMenuItem(
-            text = { Text(stringResource(labelRes(item))) },
+            text = {
+                Text(
+                    text = stringResource(labelRes(item)),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
             onClick = { onSelected(item) }
         )
     }
