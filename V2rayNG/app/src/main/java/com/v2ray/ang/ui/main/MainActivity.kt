@@ -25,6 +25,9 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionInfoParser
+import com.v2ray.ang.panel.LoginActivity
+import com.v2ray.ang.panel.PanelApi
+import com.v2ray.ang.panel.SecureTokenStore
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
@@ -119,11 +122,58 @@ class MainActivity : HelperBaseComponentActivity() {
                     is MainAction.ShareClipboard -> shareToClipboard(action.guid)
                     is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
                     is MainAction.OpenSubscriptionLink -> openSubscriptionLink(action.url)
+
+                    // خروج از حساب پنل
+                    MainAction.Logout -> logoutFromPanel()
+
                     else -> mainViewModel.onAction(action)
                 }
             },
             onNavigate = { route -> navigateTo(route) },
         )
+    }
+
+    /**
+     * فقط نشست ورود را خاتمه می‌دهد.
+     * حساب کاربری، کانفیگ‌ها و تنظیمات برنامه حذف نمی‌شوند.
+     */
+    private fun logoutFromPanel() {
+        lifecycleScope.launch {
+            // ابتدا درخواست خروج به سرور ارسال می‌شود.
+            val result = withContext(Dispatchers.IO) {
+                PanelApi.logout()
+            }
+
+            // توقف سرویس VPN
+            LauncherManager.stopService(this@MainActivity)
+
+            // پاک‌کردن توکن ذخیره‌شده در گوشی
+            SecureTokenStore.clear(this@MainActivity)
+
+            // پاک‌کردن نشست موقت داخل حافظه برنامه
+            PanelApi.clearSession()
+
+            // پاک‌کردن توکن قدیمی احتمالی
+            getSharedPreferences("panel", MODE_PRIVATE)
+                .edit()
+                .remove("token")
+                .apply()
+
+            // نمایش نتیجه خروج
+            toast(result.msg)
+
+            // بازگشت به صفحه ورود و حذف MainActivity از پشته صفحات
+            val intent = Intent(
+                this@MainActivity,
+                LoginActivity::class.java
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+
+            startActivity(intent)
+            finish()
+        }
     }
 
     private fun shareToClipboard(guid: String): Boolean =
