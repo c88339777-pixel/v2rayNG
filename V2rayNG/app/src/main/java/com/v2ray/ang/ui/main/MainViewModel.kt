@@ -313,7 +313,8 @@ class MainViewModel(
             is MainAction.EditServer,
             is MainAction.ShareClipboard,
             is MainAction.ShareFullContent,
-            is MainAction.OpenSubscriptionLink -> {
+            is MainAction.OpenSubscriptionLink,
+            MainAction.Logout -> {
                 // Handled by Activity via its onAction lambda
             }
         }
