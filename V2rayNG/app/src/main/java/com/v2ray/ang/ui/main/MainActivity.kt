@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +27,7 @@ import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionInfoParser
 import com.v2ray.ang.panel.LoginActivity
+import com.v2ray.ang.panel.PanelSync
 import com.v2ray.ang.panel.PanelApi
 import com.v2ray.ang.panel.SecureTokenStore
 import com.v2ray.ang.ui.AboutActivity
@@ -95,11 +97,43 @@ class MainActivity : HelperBaseComponentActivity() {
             if (restartService) LauncherManager.restartService(this)
         }
 
+    // The login screen has just synced when this screen opens, so the first resume skips it.
+    private var lastPanelSyncAt = SystemClock.elapsedRealtime()
+    private val panelSyncIntervalMs = 60_000L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncPanelConfigs()
+    }
+
+    /**
+     * Reopening the app from the background resumes this screen without passing
+     * through the login screen, so the assigned configs are refreshed here too.
+     */
+    private fun syncPanelConfigs() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPanelSyncAt < panelSyncIntervalMs) return
+        lastPanelSyncAt = now
+
+        lifecycleScope.launch {
+            val token = withContext(Dispatchers.IO) { SecureTokenStore.get(this@MainActivity) }
+                ?: return@launch
+
+            when (PanelSync.start(token).await()) {
+                PanelSync.Outcome.Imported,
+                PanelSync.Outcome.NoConfigs,
+                is PanelSync.Outcome.Denied -> mainViewModel.onAction(MainAction.RefreshGroups)
+
+                else -> Unit
+            }
+        }
     }
 
     @Composable
