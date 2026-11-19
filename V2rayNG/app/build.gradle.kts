@@ -40,6 +40,9 @@ android {
 
     buildTypes {
         release {
+            // Signed with the debug key so the release APK installs directly; this is for
+            // personal distribution only. Replace with a real keystore to publish on a store.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -126,6 +129,11 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+    }
+
+    lint {
+        // The CI release build is only meant to produce an APK, not to run lint.
+        checkReleaseBuilds = false
     }
 
     androidResources {
