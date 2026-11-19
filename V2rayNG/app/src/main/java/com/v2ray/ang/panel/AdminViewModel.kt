@@ -4,15 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -21,25 +18,41 @@ data class AdminUiState(
     val message: String? = null,
     val configs: List<AdminConfig> = emptyList(),
     val users: List<AdminUser> = emptyList(),
-    /** Config IDs assigned to the user currently open in the editor. */
-    val assignedConfigIds: Set<String> = emptySet(),
+    /** The user whose assignments are held below (the one open in the editor). */
     val assignedUserId: String? = null,
+    /** Config IDs assigned to [assignedUserId]. */
+    val assignedConfigIds: Set<String> = emptySet(),
+    /** True while the assignment list of [assignedUserId] is being fetched. */
+    val assignedLoading: Boolean = false,
+    /** True once the list was fetched, so toggles are safe to apply. */
+    val assignedReady: Boolean = false,
+    /** Config IDs whose assign/unassign request is still in flight. */
+    val assigningConfigIds: Set<String> = emptySet(),
     val sessionExpired: Boolean = false,
 )
 
 class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(AdminUiState())
-    private val assignmentMutex = Mutex()
     val uiState: StateFlow<AdminUiState> = _uiState.asStateFlow()
 
-    init {
-        AdminApi.attach(application)
+    private var assignedJob: Job? = null
 
-        if (AdminApi.hasSession()) {
-            refreshAll()
-        } else {
-            _uiState.update { it.copy(sessionExpired = true) }
+    init {
+        viewModelScope.launch {
+            // Reading the saved session touches the Keystore: keep it off the main thread.
+            val hasSession = withContext(Dispatchers.IO) {
+                AdminApi.attach(application)
+                AdminApi.hasSession()
+            }
+
+            if (hasSession) {
+                _uiState.update { it.copy(loading = true) }
+                loadLists()
+                _uiState.update { it.copy(loading = false) }
+            } else {
+                _uiState.update { it.copy(sessionExpired = true) }
+            }
         }
     }
 
@@ -86,15 +99,8 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadLists() {
-        val (configData, userData) = coroutineScope {
-            val configsTask = async(Dispatchers.IO) { AdminApi.listConfigs() }
-            val usersTask = async(Dispatchers.IO) { AdminApi.listUsers() }
-            configsTask.await() to usersTask.await()
-        }
-        val configResult = configData.first
-        val configs = configData.second
-        val userResult = userData.first
-        val users = userData.second
+        val (configResult, configs) = withContext(Dispatchers.IO) { AdminApi.listConfigs() }
+        val (userResult, users) = withContext(Dispatchers.IO) { AdminApi.listUsers() }
 
         if (!configResult.ok) {
             handleFailure(configResult)
@@ -242,45 +248,88 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- config assignment ----------
 
     fun loadAssigned(userId: String) {
-        viewModelScope.launch {
-            // Reset immediately and tag the state to prevent a late response for a previous user
-            // from replacing the assignments currently displayed in the dialog.
-            _uiState.update { it.copy(assignedUserId = userId, assignedConfigIds = emptySet()) }
-            val (result, ids) = withContext(Dispatchers.IO) { AdminApi.userConfigIds(userId) }
-            if (_uiState.value.assignedUserId != userId) return@launch
-            if (result.ok) {
-                _uiState.update { it.copy(assignedConfigIds = ids) }
-            } else {
-                handleFailure(result)
+        // A newer request supersedes the previous one, so a slow answer for an
+        // earlier user can never overwrite the list of the user now on screen.
+        assignedJob?.cancel()
+
+        assignedJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    assignedUserId = userId,
+                    assignedConfigIds = emptySet(),
+                    assignedLoading = true,
+                    assignedReady = false,
+                    assigningConfigIds = emptySet(),
+                )
             }
+
+            val (result, ids) = withContext(Dispatchers.IO) { AdminApi.userConfigIds(userId) }
+
+            _uiState.update {
+                if (it.assignedUserId != userId) {
+                    it
+                } else {
+                    it.copy(
+                        assignedConfigIds = if (result.ok) ids else emptySet(),
+                        assignedLoading = false,
+                        assignedReady = result.ok,
+                    )
+                }
+            }
+
+            if (!result.ok) handleFailure(result)
         }
     }
 
     fun setAssigned(userId: String, configId: String, assigned: Boolean) {
+        val current = _uiState.value
+
+        // Ignore taps until the list is loaded, or while this same config is still being saved.
+        if (current.assignedUserId != userId ||
+            !current.assignedReady ||
+            configId in current.assigningConfigIds
+        ) return
+
+        // Optimistic update: the checkbox reacts at once and is rolled back on failure.
+        _uiState.update {
+            it.copy(
+                assignedConfigIds = it.assignedConfigIds.withAssignment(configId, assigned),
+                assigningConfigIds = it.assigningConfigIds + configId,
+            )
+        }
+
         viewModelScope.launch {
-            assignmentMutex.withLock {
-                // Ignore callbacks from a dialog that has already switched to another user.
-                if (_uiState.value.assignedUserId != userId) return@withLock
-                val result = withContext(Dispatchers.IO) {
-                    if (assigned) AdminApi.assignConfig(userId, configId)
-                    else AdminApi.unassignConfig(userId, configId)
-                }
-            // A response is only allowed to update the currently-open user's state.
-            if (_uiState.value.assignedUserId != userId) return@launch
-            // 409 = already assigned: treat as idempotent success.
-            if (result.ok || result.code == 409) {
-                _uiState.update { current ->
-                    if (current.assignedUserId != userId) current else current.copy(
-                        assignedConfigIds = if (assigned) current.assignedConfigIds + configId
-                        else current.assignedConfigIds - configId
+            val result = withContext(Dispatchers.IO) {
+                if (assigned) AdminApi.assignConfig(userId, configId)
+                else AdminApi.unassignConfig(userId, configId)
+            }
+
+            // 409 = already assigned, 404 = already unassigned: the screen was simply out of date.
+            val done = result.ok ||
+                (assigned && result.code == 409) ||
+                (!assigned && result.code == 404)
+
+            _uiState.update {
+                if (it.assignedUserId != userId) {
+                    it
+                } else {
+                    it.copy(
+                        assignedConfigIds = if (done) {
+                            it.assignedConfigIds
+                        } else {
+                            it.assignedConfigIds.withAssignment(configId, !assigned)
+                        },
+                        assigningConfigIds = it.assigningConfigIds - configId,
                     )
                 }
-                } else {
-                    handleFailure(result)
-                }
             }
+
+            if (!done) handleFailure(result)
         }
     }
+
+    private fun Set<String>.withAssignment(configId: String, assigned: Boolean): Set<String> =
+        if (assigned) this + configId else this - configId
 
     fun logout() {
         AdminApi.clearSession()

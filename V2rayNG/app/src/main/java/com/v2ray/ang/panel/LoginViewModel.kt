@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.MmkvManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class LoginUiState(
     val loading: Boolean = false,
@@ -29,6 +30,11 @@ sealed interface LoginEvent {
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
+    private companion object {
+        /** How long a normal launch waits for the server before using the saved configs. */
+        const val SYNC_WAIT_MS = 8_000L
+    }
+
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
@@ -40,12 +46,22 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        AdminApi.attach(application)
+        viewModelScope.launch { bootstrap() }
+    }
 
-        if (AdminApi.hasSession()) {
-            _events.trySend(LoginEvent.OpenAdmin)
-        } else {
-            loadSavedUserToken()?.let { syncUser(it) }
+    private suspend fun bootstrap() {
+        val app = getApplication<Application>()
+
+        // The saved sessions live in the Keystore: read them off the main thread.
+        val (adminSession, token) = withContext(Dispatchers.IO) {
+            AdminApi.attach(app)
+
+            if (AdminApi.hasSession()) true to null else false to loadSavedUserToken()
+        }
+
+        when {
+            adminSession -> _events.send(LoginEvent.OpenAdmin)
+            token != null -> syncUser(token, requireFresh = false)
         }
     }
 
@@ -92,7 +108,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         SecureTokenStore.save(getApplication<Application>(), result.token)
                     }
 
-                    syncUser(result.token)
+                    syncUser(result.token, requireFresh = true)
                 } catch (_: Exception) {
                     setState(false, "خطا در ذخیره امن اطلاعات ورود", true)
                 }
@@ -102,48 +118,50 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun syncUser(token: String) {
-        viewModelScope.launch {
-            setState(true, "در حال دریافت کانفیگ‌ها...")
+    /**
+     * [requireFresh] is true right after a login: the screen then waits for the
+     * server, because configs left over from another account must not be used.
+     * On a normal launch the saved configs are used if the server is slow or
+     * unreachable, and the sync keeps running in the background.
+     */
+    private suspend fun syncUser(token: String, requireFresh: Boolean) {
+        val hasLocal = !requireFresh && withContext(Dispatchers.IO) {
+            MmkvManager.decodeAllServerList().isNotEmpty()
+        }
 
-            try {
-                val result = withContext(Dispatchers.IO) { PanelApi.configs(token) }
+        setState(true, "در حال دریافت کانفیگ‌ها...")
 
-                when {
-                    result.ok && result.links.isNotEmpty() -> {
-                        val imported = withContext(Dispatchers.IO) {
-                            AngConfigManager.importBatchConfig(
-                                result.links.joinToString("\n"),
-                                "",
-                                true
-                            )
-                        }
+        val sync = PanelSync.start(token)
+        val outcome = if (hasLocal) {
+            withTimeoutOrNull(SYNC_WAIT_MS) { sync.await() }
+        } else {
+            sync.await()
+        }
 
-                        if (imported.first <= 0) {
-                            setState(
-                                false,
-                                "کانفیگ دریافت شد، اما وارد برنامه نشد. قالب کانفیگ‌ها را بررسی کنید.",
-                                true
-                            )
-                        } else {
-                            _events.send(LoginEvent.OpenMain)
-                        }
-                    }
+        when (outcome) {
+            // Slow network: open with the saved configs; the sync finishes by itself.
+            null, PanelSync.Outcome.Imported -> _events.send(LoginEvent.OpenMain)
 
-                    result.ok -> setState(false, "هنوز کانفیگی به حساب شما اختصاص داده نشده است.", true)
+            PanelSync.Outcome.NoConfigs ->
+                setState(false, "هنوز کانفیگی به حساب شما اختصاص داده نشده است.", true)
 
-                    result.token == "expired" -> {
-                        SecureTokenStore.clear(getApplication<Application>())
-                        PanelApi.clearSession()
-                        prefs.edit().remove("token").apply()
-                        setState(false, "نشست شما تمام شده است؛ دوباره وارد شوید.", true)
-                    }
-
-                    else -> setState(false, result.msg, true)
+            is PanelSync.Outcome.Expired -> {
+                withContext(Dispatchers.IO) {
+                    SecureTokenStore.clear(getApplication<Application>())
+                    PanelApi.clearSession()
+                    prefs.edit().remove("token").apply()
                 }
-            } catch (_: Exception) {
-                setState(false, "خطای غیرمنتظره هنگام دریافت کانفیگ‌ها", true)
+                setState(false, "نشست شما تمام شده است؛ دوباره وارد شوید.", true)
             }
+
+            is PanelSync.Outcome.Denied -> setState(false, outcome.msg, true)
+
+            is PanelSync.Outcome.Failed ->
+                if (hasLocal && outcome.offline) {
+                    _events.send(LoginEvent.OpenMain)
+                } else {
+                    setState(false, outcome.msg, true)
+                }
         }
     }
 

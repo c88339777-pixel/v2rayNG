@@ -17,7 +17,19 @@ object SecureTokenStore {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
+    // Opening the Keystore is slow on many devices, so the key is resolved once per process.
+    @Volatile
+    private var cachedKey: SecretKey? = null
+
     private fun getKey(): SecretKey {
+        cachedKey?.let { return it }
+
+        return synchronized(this) {
+            cachedKey ?: loadOrCreateKey().also { cachedKey = it }
+        }
+    }
+
+    private fun loadOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)
 
@@ -96,6 +108,7 @@ object SecureTokenStore {
                 StandardCharsets.UTF_8
             )
         } catch (e: Exception) {
+            cachedKey = null
             clear(context, slot)
             null
         }

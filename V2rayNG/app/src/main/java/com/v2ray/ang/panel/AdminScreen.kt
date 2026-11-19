@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -213,7 +214,10 @@ fun AdminScreen(
             UserEditDialog(
                 user = user,
                 configs = state.configs,
-                assignedIds = state.assignedConfigIds,
+                assignedIds = if (state.assignedUserId == user.id) state.assignedConfigIds else emptySet(),
+                assignedLoading = state.assignedUserId != user.id || state.assignedLoading,
+                assignedReady = state.assignedUserId == user.id && state.assignedReady,
+                busyIds = if (state.assignedUserId == user.id) state.assigningConfigIds else emptySet(),
                 onLoadAssigned = { onLoadAssigned(user.id) },
                 onToggleAssigned = { configId, assigned -> onSetAssigned(user.id, configId, assigned) },
                 onDismiss = { editUserId = null },
@@ -551,6 +555,9 @@ private fun UserEditDialog(
     user: AdminUser,
     configs: List<AdminConfig>,
     assignedIds: Set<String>,
+    assignedLoading: Boolean,
+    assignedReady: Boolean,
+    busyIds: Set<String>,
     onLoadAssigned: () -> Unit,
     onToggleAssigned: (configId: String, assigned: Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -645,17 +652,35 @@ private fun UserEditDialog(
                     )
                 }
 
+                if (assignedLoading) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(
+                            "در حال دریافت کانفیگ‌های کاربر...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (!assignedReady) {
+                    TextButton(onClick = onLoadAssigned) { Text("دریافت لیست ناموفق بود؛ تلاش مجدد") }
+                }
+
                 configs.forEach { config ->
                     val checked = config.id in assignedIds
+                    val enabled = assignedReady && config.id !in busyIds
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onToggleAssigned(config.id, !checked) },
+                            .clickable(enabled = enabled) { onToggleAssigned(config.id, !checked) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
                             checked = checked,
+                            enabled = enabled,
                             onCheckedChange = { onToggleAssigned(config.id, it) },
                         )
                         Text(

@@ -191,7 +191,9 @@ object AdminApi {
                 Result(
                     ok = response.isSuccessful,
                     code = response.code,
-                    msg = if (response.isSuccessful) "" else errorOf(json, "خطا در ارتباط با سرور"),
+                    // The HTTP code is appended so a failure on the phone can be matched with the server.
+                    msg = if (response.isSuccessful) "" else
+                        "${errorOf(json, "خطا در ارتباط با سرور")} (${response.code})",
                     json = json,
                 )
             }
@@ -308,10 +310,32 @@ object AdminApi {
 
     // ---------- config assignment ----------
 
+    /**
+     * Reads the config IDs assigned to a user. The site may answer with a plain
+     * array of IDs or with an array of objects, under any of the keys below.
+     */
     fun userConfigIds(userId: String): Pair<Result, Set<String>> {
         val result = call("GET", "/api/admin/users/$userId/configs")
-        val array = result.json?.optJSONArray("configIds") ?: JSONArray()
-        val ids = (0 until array.length()).map { array.optString(it) }.toSet()
+        val json = result.json ?: return result to emptySet()
+
+        val array = listOf("configIds", "config_ids", "ids", "configs", "assigned")
+            .firstNotNullOfOrNull { json.optJSONArray(it) }
+            ?: JSONArray()
+
+        val ids = (0 until array.length()).mapNotNull { index ->
+            val item = array.opt(index)
+
+            when (item) {
+                is JSONObject -> item.optString("configId")
+                    .ifBlank { item.optString("config_id") }
+                    .ifBlank { item.optString("id") }
+                    .ifBlank { null }
+
+                null, JSONObject.NULL -> null
+                else -> item.toString().ifBlank { null }
+            }
+        }.toSet()
+
         return result to ids
     }
 
@@ -321,9 +345,12 @@ object AdminApi {
             JSONObject().put("configId", configId)
         )
 
+    // The ID is sent both in the body and in the query string, because some
+    // hosts drop the body of DELETE requests.
     fun unassignConfig(userId: String, configId: String): Result =
         call(
-            "DELETE", "/api/admin/users/$userId/configs",
+            "DELETE",
+            "/api/admin/users/$userId/configs?configId=" + java.net.URLEncoder.encode(configId, "UTF-8"),
             JSONObject().put("configId", configId)
         )
 }
