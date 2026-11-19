@@ -143,7 +143,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             null, PanelSync.Outcome.Imported -> _events.send(LoginEvent.OpenMain)
 
             PanelSync.Outcome.NoConfigs ->
-                setState(false, "هنوز کانفیگی به حساب شما اختصاص داده نشده است.", true)
+                setState(false, "کانفیگ فعالی به حساب شما اختصاص داده نشده است.", true)
 
             is PanelSync.Outcome.Expired -> {
                 withContext(Dispatchers.IO) {

@@ -61,6 +61,13 @@ object PanelSync {
                     }
                 }
 
+                // The server sent configs, but none can be imported: keep what is saved.
+                result.ok && result.received > 0 -> Outcome.Failed(
+                    "کانفیگ دریافت شد اما نوع آن پشتیبانی نمی‌شود: " +
+                        result.skipped.joinToString("، "),
+                    offline = false
+                )
+
                 result.ok -> {
                     MmkvManager.removeServerViaSubid("")
                     Outcome.NoConfigs

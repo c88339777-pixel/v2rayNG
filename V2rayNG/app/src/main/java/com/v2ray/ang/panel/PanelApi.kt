@@ -18,11 +18,23 @@ object PanelApi {
     private val jsonType =
         "application/json; charset=utf-8".toMediaType()
 
+    private val SCHEME = Regex("^([A-Za-z][A-Za-z0-9+.-]*)://")
+
+    // Same schemes the importer (AngConfigManager) can parse.
+    private val SUPPORTED_SCHEMES = setOf(
+        "vmess", "vless", "ss", "trojan", "socks", "socks4", "socks5", "http",
+        "wireguard", "tuic", "hysteria", "hysteria2", "hy2", "masque"
+    )
+
     data class Res(
         val ok: Boolean,
         val msg: String = "",
         val token: String? = null,
         val links: List<String> = emptyList(),
+        /** How many non-empty configs the server returned (before filtering). */
+        val received: Int = 0,
+        /** Schemes of returned configs the app cannot import. */
+        val skipped: List<String> = emptyList(),
         val statusCode: Int = 0
     )
 
@@ -180,31 +192,43 @@ object PanelApi {
                         val arr = json.optJSONArray("configs")
 
                         val links = mutableListOf<String>()
+                        val skipped = linkedSetOf<String>()
+                        var received = 0
 
                         if (arr != null) {
                             for (i in 0 until arr.length()) {
-                                val config = arr.optJSONObject(i)
+                                val raw = arr.optJSONObject(i)
                                     ?.optString("config")
                                     ?.trim()
                                     .orEmpty()
 
-                                val supported = Regex(
-                                    "^(vless|vmess|ss|trojan|socks|socks4|socks5|wireguard|hysteria2|hy2|masque)://",
-                                    RegexOption.IGNORE_CASE
-                                )
+                                if (raw.isBlank()) continue
+                                received++
 
-                                if (
-                                    config.isNotBlank() &&
-                                    supported.containsMatchIn(config)
-                                ) {
-                                    links.add(config)
-                                }
+                                // One config row may hold several links, one per line.
+                                raw.lineSequence()
+                                    .map { it.trim() }
+                                    .filter { it.isNotEmpty() }
+                                    .forEach { line ->
+                                        val scheme = SCHEME.find(line)
+                                            ?.groupValues?.get(1)
+                                            ?.lowercase()
+
+                                        if (scheme != null && scheme in SUPPORTED_SCHEMES) {
+                                            // The importer only understands lower-case schemes.
+                                            links.add(scheme + line.substring(scheme.length))
+                                        } else {
+                                            skipped.add(scheme ?: "unknown")
+                                        }
+                                    }
                             }
                         }
 
                         Res(
                             ok = true,
                             links = links.distinct(),
+                            received = received,
+                            skipped = skipped.toList(),
                             statusCode = 200
                         )
                     }
