@@ -2,6 +2,8 @@ package com.v2ray.ang.panel
 
 import android.app.Application
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.handler.MmkvManager
@@ -86,6 +88,20 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
+    /** False only when the phone has no network at all (airplane mode, no Wi-Fi/data). */
+    private fun hasAnyNetwork(): Boolean {
+        return try {
+            val cm = getApplication<Application>()
+                .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return true
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false)
+                ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     private fun setState(loading: Boolean, message: String = "", isError: Boolean = false) {
         _uiState.update { LoginUiState(loading, message, isError) }
     }
@@ -129,6 +145,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             MmkvManager.decodeAllServerList().isNotEmpty()
         }
 
+        // Already signed in and configs are saved: with no network there is nothing
+        // to wait for, so open the app right away (a sync still starts in the background).
+        if (hasLocal && !hasAnyNetwork()) {
+            PanelSync.start(token)
+            _events.send(LoginEvent.OpenMain)
+            return
+        }
+
         setState(true, "در حال دریافت کانفیگ‌ها...")
 
         val sync = PanelSync.start(token)
@@ -157,7 +181,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             is PanelSync.Outcome.Denied -> setState(false, outcome.msg, true)
 
             is PanelSync.Outcome.Failed ->
-                if (hasLocal && outcome.offline) {
+                // hasLocal is only true on a normal launch (never right after a fresh login),
+                // so any failure here -- offline, timeout or a server error -- keeps the user in.
+                if (hasLocal) {
                     _events.send(LoginEvent.OpenMain)
                 } else {
                     setState(false, outcome.msg, true)
