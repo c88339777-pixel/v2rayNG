@@ -85,18 +85,18 @@ jobs:
         distribution: temurin
         java-version: '21'
 
-    - name: Build Debug APK
+    - name: Build Release APK
       run: |
         cd ${{ github.workspace }}/V2rayNG
         echo "sdk.dir=${ANDROID_HOME}" > local.properties
         chmod 755 gradlew
-        ./gradlew assembleDebug
+        ./gradlew assembleRelease
 
-    - name: Upload Debug APKs
+    - name: Upload Release APKs
       uses: actions/upload-artifact@v7
       if: success()
       with:
-        name: debug-apks
-        path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/**/debug/*.apk
+        name: release-apks
+        path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/**/release/*.apk
         if-no-files-found: error
         
