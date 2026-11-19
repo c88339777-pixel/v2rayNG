@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,8 +101,14 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadLists() {
-        val (configResult, configs) = withContext(Dispatchers.IO) { AdminApi.listConfigs() }
-        val (userResult, users) = withContext(Dispatchers.IO) { AdminApi.listUsers() }
+        // Both lists are requested at the same time instead of one after the other.
+        val (configPair, userPair) = coroutineScope {
+            val configsCall = async(Dispatchers.IO) { AdminApi.listConfigs() }
+            val usersCall = async(Dispatchers.IO) { AdminApi.listUsers() }
+            configsCall.await() to usersCall.await()
+        }
+        val (configResult, configs) = configPair
+        val (userResult, users) = userPair
 
         if (!configResult.ok) {
             handleFailure(configResult)
