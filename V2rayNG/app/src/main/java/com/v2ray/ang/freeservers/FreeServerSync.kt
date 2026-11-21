@@ -22,7 +22,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Collects free public Hysteria2 / WireGuard servers from open GitHub lists and keeps them in
+ * Collects free public Hysteria2 / WireGuard / VLESS / VMess / Trojan / Shadowsocks servers from open GitHub lists and keeps them in
  * their own group ([GROUP_NAME]) of the server list, so users get working servers without
  * the admin adding anything by hand.
  *
@@ -41,7 +41,7 @@ object FreeServerSync {
     private const val FETCH_TIMEOUT_MS = 8000
     private const val MAX_LINES_PER_SOURCE = 5000
 
-    private val LINK = Regex("^(hysteria2|hy2|wireguard)://\\S+$", RegexOption.IGNORE_CASE)
+    private val LINK = Regex("^(hysteria2|hy2|wireguard|vless|vmess|trojan|ss)://\\S+$", RegexOption.IGNORE_CASE)
     private val HOST_PORT = Regex("://(?:[^@/?#]*@)?([^/?#]+)")
 
     private val running = AtomicBoolean(false)
