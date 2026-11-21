@@ -94,7 +94,7 @@ fun LoginScreen(
             Spacer(Modifier.height(12.dp))
 
             Text(
-                text = "TAHA VPN",
+                text = "Xylen VPN",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,

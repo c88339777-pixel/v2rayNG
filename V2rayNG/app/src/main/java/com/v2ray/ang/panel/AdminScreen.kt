@@ -107,7 +107,7 @@ fun AdminScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("مدیریت TAHA VPN", fontWeight = FontWeight.Bold) },
+                title = { Text("مدیریت Xylen VPN", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = "بروزرسانی لیست‌ها")
