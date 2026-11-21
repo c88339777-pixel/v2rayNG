@@ -47,7 +47,7 @@ class ToolsViewModel : ViewModel() {
         ToolsSignal.changed = true
         when (outcome) {
             is FreeServerSync.Outcome.Imported ->
-                "${outcome.count} سرور سالم در گروه «سرورهای رایگان» ماند"
+                "${outcome.count} سرور روی این اینترنت جواب داد؛ سرورهایی که روی هیچ‌کدام از اینترنت‌های شما کار نکنند پاک می‌شوند"
             is FreeServerSync.Outcome.Failed -> outcome.msg
             FreeServerSync.Outcome.Skipped -> "به‌روزرسانی همین حالا در حال انجام است"
         }
@@ -72,7 +72,7 @@ class ToolsViewModel : ViewModel() {
         when (val outcome = withContext(Dispatchers.IO) { WarpRegistrar.create() }) {
             is WarpRegistrar.Outcome.Created -> {
                 ToolsSignal.changed = true
-                "${outcome.name} در گروه «${WarpRegistrar.GROUP_NAME}» ساخته شد"
+                "${outcome.kept} اتصال WARP سالم (بهترین: ${outcome.bestMs} ms) در گروه «${WarpRegistrar.GROUP_NAME}» اضافه شد"
             }
             is WarpRegistrar.Outcome.Failed -> outcome.message
         }

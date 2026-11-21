@@ -87,7 +87,7 @@ private fun ToolsScreen(
         ) {
             ToolCard(
                 title = "سرورهای رایگان",
-                description = "سرورهای عمومی چندپروتکلی را از لیست‌های GitHub می‌گیرد، روی اینترنت شما تست می‌کند و فقط سالم‌ها را نگه می‌دارد. چند دقیقه طول می‌کشد."
+                description = "سرورهای عمومی چندپروتکلی را از لیست‌های GitHub می‌گیرد، روی اینترنت شما تست می‌کند و سالم‌ها را بالا می‌آورد. اگر بین وای‌فای و سیم‌کارت جابه‌جا می‌شوید، سروری که روی یکی از آن‌ها کار کند پاک نمی‌شود. چند دقیقه طول می‌کشد."
             ) {
                 Button(onClick = onRefreshFree, enabled = idle) { Text("به‌روزرسانی الان") }
                 if (state.busy == "free") Spinner()
@@ -115,7 +115,7 @@ private fun ToolsScreen(
 
             ToolCard(
                 title = "WARP",
-                description = "یک حساب رایگان Cloudflare WARP می‌سازد و به‌صورت WireGuard در گروه «WARP» می‌گذارد. هر بار فشار دهید یک حساب جدید اضافه می‌شود."
+                description = "یک حساب رایگان Cloudflare WARP می‌سازد، چند ده آدرس WARP را روی اینترنت شما می‌آزماید و فقط سالم‌ها را در گروه «WARP» می‌گذارد. حدود یک دقیقه طول می‌کشد."
             ) {
                 Button(onClick = onCreateWarp, enabled = idle) { Text("ساخت حساب WARP") }
                 if (state.busy == "warp") Spinner()
