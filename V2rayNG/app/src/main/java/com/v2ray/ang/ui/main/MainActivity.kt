@@ -118,7 +118,9 @@ class MainActivity : HelperBaseComponentActivity() {
     /** Keeps the "free servers" group filled; it checks by itself whether a refresh is due. */
     private fun refreshFreeServers() {
         lifecycleScope.launch {
-            val outcome = FreeServerSync.refresh()
+            val outcome = FreeServerSync.refresh(onGroupChanged = {
+                lifecycleScope.launch { mainViewModel.onAction(MainAction.RefreshGroups) }
+            })
             if (outcome is FreeServerSync.Outcome.Imported) {
                 mainViewModel.onAction(MainAction.RefreshGroups)
             }
