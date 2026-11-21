@@ -1,5 +1,8 @@
 package com.v2ray.ang.freeservers
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.RealPingEvent
@@ -19,27 +22,45 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Collects free public Hysteria2 / WireGuard / VLESS / VMess / Trojan / Shadowsocks servers from open GitHub lists and keeps them in
- * their own group ([GROUP_NAME]) of the server list, so users get working servers without
- * the admin adding anything by hand.
+ * Collects free public Hysteria2 / WireGuard / VLESS / VMess / Trojan / Shadowsocks servers from
+ * open GitHub lists and keeps them in their own group ([GROUP_NAME]) of the server list.
  *
  * The group is separate from the panel's configs: the panel sync replaces only the default
- * group, and this sync replaces only this one.
+ * group, and this sync only touches this one.
+ *
+ * Servers are tested on the user's own line and remembered per kind of network (Wi-Fi or mobile
+ * data). A server is removed only when it failed on EVERY kind of network this user has used, so
+ * someone who switches between a home Wi-Fi and a SIM card keeps what works on either. When the
+ * network changes, the group is tested again and re-sorted for the new line.
  */
 object FreeServerSync {
 
     const val GROUP_NAME = "سرورهای رایگان"
 
-    /** Servers per source list, and in total, so the server list stays light. */
+    /** New servers taken per source list, and per refresh. */
     private const val PER_SOURCE = 40
     private const val MAX_TOTAL = 200
-    private const val TEST_TIMEOUT_MS = 4L * 60 * 1000
+
+    /** The group never grows beyond this; the slowest and failed ones go first. */
+    private const val MAX_KEEP = 300
+
+    /** A server is removed only after failing this many separate tests. */
+    private const val MIN_FAILED_TESTS = 3
+
     private const val REFRESH_INTERVAL_MS = 6L * 60 * 60 * 1000
+    private const val RETEST_MIN_GAP_MS = 10L * 60 * 1000
+    private const val ATTEMPT_MIN_GAP_MS = 15L * 60 * 1000
+    private const val TEST_TIMEOUT_MS = 8L * 60 * 1000
     private const val FETCH_TIMEOUT_MS = 8000
     private const val MAX_LINES_PER_SOURCE = 5000
+
+    private const val KIND_WIFI = 1
+    private const val KIND_MOBILE = 2
 
     private val LINK = Regex("^(hysteria2|hy2|wireguard|vless|vmess|trojan|ss)://\\S+$", RegexOption.IGNORE_CASE)
     private val HOST_PORT = Regex("://(?:[^@/?#]*@)?([^/?#]+)")
@@ -47,15 +68,15 @@ object FreeServerSync {
     private val running = AtomicBoolean(false)
 
     sealed interface Outcome {
-        /** [count] is how many servers passed the test and stayed in the group. */
+        /** [count] is how many servers answered on the current network. */
         data class Imported(val count: Int) : Outcome
         data object Skipped : Outcome
         data class Failed(val msg: String) : Outcome
     }
 
     /**
-     * Refreshes the group. Without [force] it does nothing while the last refresh is
-     * recent. Safe to call often; only one refresh runs at a time.
+     * Refreshes the group when it is due, or re-tests it when the network changed. Without
+     * [force] it does nothing otherwise. Safe to call often; only one run happens at a time.
      */
     suspend fun refresh(
         force: Boolean = false,
@@ -63,39 +84,48 @@ object FreeServerSync {
     ): Outcome = withContext(Dispatchers.IO) {
         if (!running.compareAndSet(false, true)) return@withContext Outcome.Skipped
         try {
+            val now = System.currentTimeMillis()
             val existing = findGroup()
-            if (!force && existing != null) {
-                val item = existing.subscription
-                val hasServers = MmkvManager.decodeServerList(existing.guid).isNotEmpty()
-                val recent = System.currentTimeMillis() - item.lastUpdated < REFRESH_INTERVAL_MS
-                if (hasServers && recent) return@withContext Outcome.Skipped
+            val kind = currentKind()
+            val hasServers = existing != null && MmkvManager.decodeServerList(existing.guid).isNotEmpty()
+            val stale = existing == null || now - existing.subscription.lastUpdated >= REFRESH_INTERVAL_MS
+
+            val needsFetch = force || !hasServers || stale
+            val networkChanged = kind != 0 && kind != State.lastKind && now - State.lastTestAt >= RETEST_MIN_GAP_MS
+
+            if (!force) {
+                if (!needsFetch && !networkChanged) return@withContext Outcome.Skipped
+                // Do not hammer the network (or the battery) while it keeps failing.
+                if (now - State.lastAttemptAt < ATTEMPT_MIN_GAP_MS) return@withContext Outcome.Skipped
+            }
+            State.lastAttemptAt = now
+
+            var groupId = existing?.guid
+            if (needsFetch) {
+                var lists = fetchAll(useProxy = false)
+                if (lists.all { it.isEmpty() }) lists = fetchAll(useProxy = true)
+
+                val links = pick(lists)
+                if (links.isEmpty() && !hasServers) {
+                    return@withContext Outcome.Failed("سرور رایگانی دریافت نشد")
+                }
+                if (links.isNotEmpty()) {
+                    val id = groupId ?: createGroup()
+                        ?: return@withContext Outcome.Failed("ساخت گروه سرورهای رایگان انجام نشد")
+                    groupId = id
+                    // append = true keeps what is already there and skips servers it already has.
+                    AngConfigManager.importBatchConfig(links.joinToString("\n"), id, true)
+                    onGroupChanged()
+                }
             }
 
-            var lists = fetchAll(useProxy = false)
-            if (lists.all { it.isEmpty() }) lists = fetchAll(useProxy = true)
+            val id = groupId ?: return@withContext Outcome.Skipped
+            val alive = testAndMaintain(id, kind)
 
-            val links = pick(lists)
-            if (links.isEmpty()) return@withContext Outcome.Failed("سرور رایگانی دریافت نشد")
-
-            val groupId = existing?.guid ?: createGroup()
-                ?: return@withContext Outcome.Failed("ساخت گروه سرورهای رایگان انجام نشد")
-
-            // append = false replaces only this group's old servers.
-            val imported = AngConfigManager.importBatchConfig(links.joinToString("\n"), groupId, false)
-            if (imported.first <= 0) {
-                return@withContext Outcome.Failed("سرورهای دریافت‌شده قابل استفاده نبودند")
-            }
-
-            // Show the new servers right away, then test them and drop the dead ones.
-            onGroupChanged()
-            val alive = testAndPrune(groupId)
-
-            // Mark the group fresh only when something passed, so an empty result
-            // (for example no connectivity) is retried on the next app start.
-            if (alive > 0) {
-                MmkvManager.decodeSubscription(groupId)?.let { item ->
+            if (needsFetch && alive > 0) {
+                MmkvManager.decodeSubscription(id)?.let { item ->
                     item.lastUpdated = System.currentTimeMillis()
-                    MmkvManager.encodeSubscription(groupId, item)
+                    MmkvManager.encodeSubscription(id, item)
                 }
             }
 
@@ -108,23 +138,43 @@ object FreeServerSync {
         }
     }
 
+    /** Wi-Fi, mobile data, or 0 when it cannot be told (for example while a VPN is on). */
+    private fun currentKind(): Int {
+        return try {
+            val cm = AngApplication.application
+                .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return 0
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return 0) ?: return 0
+            when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> KIND_WIFI
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> KIND_MOBILE
+                else -> 0
+            }
+        } catch (e: Exception) {
+            0
+        }
+    }
+
     /**
-     * Real-tests every server of the group, then removes the ones that failed and sorts the
-     * rest by speed. If nothing passes, nothing is removed (the test itself probably failed).
-     * Returns how many servers passed.
+     * Tests every server of the group on the current line, remembers who passed on which kind of
+     * network, removes the servers that failed on all kinds this user has used, then sorts the
+     * group for the current line. If nothing passes, nothing is removed (the test itself
+     * probably failed). Returns how many servers answered.
      */
-    private suspend fun testAndPrune(groupId: String): Int {
+    private suspend fun testAndMaintain(groupId: String, kind: Int): Int {
         val guids = MmkvManager.decodeServerList(groupId)
         if (guids.isEmpty()) return 0
 
+        val results = ConcurrentHashMap<String, Long>()
         val finished = CompletableDeferred<Unit>()
         val worker = RealPingWorkerService(
             context = AngApplication.application,
             guids = guids,
             onEvent = { event ->
                 when (event) {
-                    is RealPingEvent.Result ->
+                    is RealPingEvent.Result -> {
+                        results[event.guid] = event.delayMillis
                         MmkvManager.encodeServerTestDelayMillis(event.guid, event.delayMillis)
+                    }
 
                     is RealPingEvent.Finish -> finished.complete(Unit)
                     else -> Unit
@@ -136,13 +186,46 @@ object FreeServerSync {
             worker.cancel()
         }
 
-        val alive = MmkvManager.decodeServerList(groupId).count { guid ->
-            (MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L) > 0L
+        val alive = results.values.count { it > 0L }
+        if (results.isEmpty()) return 0
+
+        val masks = State.loadMasks()
+        if (kind != 0) {
+            State.seenKinds = State.seenKinds or kind
+            results.forEach { (guid, delay) ->
+                val (tested, passed, fails) = masks[guid] ?: Triple(0, 0, 0)
+                masks[guid] = if (delay > 0L) {
+                    Triple(tested or kind, passed or kind, 0)
+                } else {
+                    Triple(tested or kind, passed and kind.inv(), fails + 1)
+                }
+            }
         }
-        if (alive > 0) {
-            AngConfigManager.removeInvalidServer(groupId)
-            AngConfigManager.sortByTestResultsForSub(groupId)
+
+        val seen = State.seenKinds
+        if (kind != 0 && alive > 0 && seen != 0) {
+            // Only a server that keeps failing, on every kind of network this user has used,
+            // across several separate tests, is removed.
+            val doomed = MmkvManager.decodeServerList(groupId).filter { guid ->
+                val (tested, passed, fails) = masks[guid] ?: return@filter false
+                (tested and seen) == seen && (passed and seen) == 0 && fails >= MIN_FAILED_TESTS
+            }
+            if (doomed.isNotEmpty()) MmkvManager.removeServers(doomed, groupId)
         }
+
+        AngConfigManager.sortByTestResultsForSub(groupId)
+
+        val sorted = MmkvManager.decodeServerList(groupId)
+        if (sorted.size > MAX_KEEP) {
+            MmkvManager.removeServers(sorted.drop(MAX_KEEP), groupId)
+        }
+
+        val remaining = MmkvManager.decodeServerList(groupId).toHashSet()
+        masks.keys.retainAll(remaining)
+        State.saveMasks(masks)
+
+        if (kind != 0) State.lastKind = kind
+        State.lastTestAt = System.currentTimeMillis()
         return alive
     }
 
@@ -230,5 +313,56 @@ object FreeServerSync {
             }
         }
         return picked
+    }
+
+    /** What the sync remembers between runs. */
+    private object State {
+        private val prefs
+            get() = AngApplication.application.getSharedPreferences("free_servers_state", Context.MODE_PRIVATE)
+
+        /** Kinds of network (bit mask) this user has been on while the app tested servers. */
+        var seenKinds: Int
+            get() = prefs.getInt("seen", 0)
+            set(value) = prefs.edit().putInt("seen", value).apply()
+
+        var lastKind: Int
+            get() = prefs.getInt("last_kind", 0)
+            set(value) = prefs.edit().putInt("last_kind", value).apply()
+
+        var lastTestAt: Long
+            get() = prefs.getLong("last_test_at", 0L)
+            set(value) = prefs.edit().putLong("last_test_at", value).apply()
+
+        var lastAttemptAt: Long
+            get() = prefs.getLong("last_attempt_at", 0L)
+            set(value) = prefs.edit().putLong("last_attempt_at", value).apply()
+
+        /** server guid -> (kinds it was tested on, kinds it passed on, failed tests in a row). */
+        fun loadMasks(): MutableMap<String, Triple<Int, Int, Int>> {
+            val out = HashMap<String, Triple<Int, Int, Int>>()
+            val text = prefs.getString("masks", null) ?: return out
+            try {
+                val json = JSONObject(text)
+                json.keys().forEach { key ->
+                    val parts = json.getString(key).split(':')
+                    if (parts.size == 3) {
+                        out[key] = Triple(
+                            parts[0].toIntOrNull() ?: 0,
+                            parts[1].toIntOrNull() ?: 0,
+                            parts[2].toIntOrNull() ?: 0
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                // A damaged note just means servers get tested again.
+            }
+            return out
+        }
+
+        fun saveMasks(masks: Map<String, Triple<Int, Int, Int>>) {
+            val json = JSONObject()
+            masks.forEach { (guid, v) -> json.put(guid, "${v.first}:${v.second}:${v.third}") }
+            prefs.edit().putString("masks", json.toString()).apply()
+        }
     }
 }
