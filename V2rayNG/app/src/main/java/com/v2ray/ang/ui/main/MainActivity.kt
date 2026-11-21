@@ -26,6 +26,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionInfoParser
+import com.v2ray.ang.freeservers.FreeServerSync
 import com.v2ray.ang.panel.LoginActivity
 import com.v2ray.ang.panel.PanelSync
 import com.v2ray.ang.panel.PanelApi
@@ -111,6 +112,17 @@ class MainActivity : HelperBaseComponentActivity() {
     override fun onResume() {
         super.onResume()
         syncPanelConfigs()
+        refreshFreeServers()
+    }
+
+    /** Keeps the "free servers" group filled; it checks by itself whether a refresh is due. */
+    private fun refreshFreeServers() {
+        lifecycleScope.launch {
+            val outcome = FreeServerSync.refresh()
+            if (outcome is FreeServerSync.Outcome.Imported) {
+                mainViewModel.onAction(MainAction.RefreshGroups)
+            }
+        }
     }
 
     /**
