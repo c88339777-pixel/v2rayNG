@@ -32,5 +32,20 @@ object FreeServerSources {
         FreeServerSource("10Dream/sub-mod", "main", "sub/split/protocols/hy2.txt"),
         FreeServerSource("10Dream/sub-mod", "main", "sub/split/protocols/wireguard.txt"),
         FreeServerSource("Delta-Kronecker/WARP-Config", "main", "ALL.txt"),
+
+        // VLESS / VMess / Trojan / Shadowsocks (including Outline-style ss:// keys)
+        FreeServerSource("V2RayRoot/V2RayConfig", "main", "Config/vless.txt"),
+        FreeServerSource("4n0nymou3/multi-proxy-config-fetcher", "main", "configs/proxy_configs_tested.txt"),
+        FreeServerSource("kingowow/Kingo-vpn", "main", "server/KingoVpn.txt"),
+        FreeServerSource("hello-world-1989/cn-news", "main", "end-gfw-together"),
+        FreeServerSource("sakha1370/OpenRay", "main", "output/kind/ss.txt"),
+        FreeServerSource("F0rc3Run/F0rc3Run", "main", "splitted-by-protocol/shadowsocks.txt"),
+        FreeServerSource("barry-far/V2ray-Config", "main", "Splitted-By-Protocol/ss.txt"),
+        FreeServerSource("barry-far/V2ray-Config", "main", "Splitted-By-Protocol/vless.txt"),
+        FreeServerSource("barry-far/V2ray-Config", "main", "Splitted-By-Protocol/trojan.txt"),
+        FreeServerSource("Epodonios/v2ray-configs", "main", "Splitted-By-Protocol/ss.txt"),
+        FreeServerSource("Epodonios/v2ray-configs", "main", "Splitted-By-Protocol/vless.txt"),
+        FreeServerSource("ebrasha/free-v2ray-public-list", "main", "ss_configs.txt"),
+        FreeServerSource("mahdibland/ShadowsocksAggregator", "master", "sub/splitted/ss.txt"),
     )
 }
