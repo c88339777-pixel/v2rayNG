@@ -27,6 +27,8 @@ import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionInfoParser
 import com.v2ray.ang.freeservers.FreeServerSync
+import com.v2ray.ang.tools.ToolsActivity
+import com.v2ray.ang.tools.ToolsSignal
 import com.v2ray.ang.panel.LoginActivity
 import com.v2ray.ang.panel.PanelSync
 import com.v2ray.ang.panel.PanelApi
@@ -113,6 +115,10 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onResume()
         syncPanelConfigs()
         refreshFreeServers()
+        if (ToolsSignal.changed) {
+            ToolsSignal.changed = false
+            mainViewModel.onAction(MainAction.RefreshGroups)
+        }
     }
 
     /** Keeps the "free servers" group filled; it checks by itself whether a refresh is due. */
@@ -246,6 +252,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun navigateTo(destination: MainDestination) {
         val intent = when (destination) {
             MainDestination.Subscriptions -> Intent(this, SubSettingActivity::class.java)
+            MainDestination.Tools -> Intent(this, ToolsActivity::class.java)
             MainDestination.PerAppProxy -> Intent(this, PerAppProxyActivity::class.java)
             MainDestination.Routing -> Intent(this, RoutingSettingActivity::class.java)
             MainDestination.UserAssets -> Intent(this, UserAssetActivity::class.java)
