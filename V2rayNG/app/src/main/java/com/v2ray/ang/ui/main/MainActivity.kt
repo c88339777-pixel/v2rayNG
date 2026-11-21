@@ -1,6 +1,9 @@
 package com.v2ray.ang.ui.main
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -111,8 +114,41 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    /** Re-tests the free servers when the phone moves between Wi-Fi and mobile data. */
+    private fun watchNetworkChanges() {
+        if (networkCallback != null) return
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    lifecycleScope.launch { refreshFreeServers() }
+                }
+            }
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            networkCallback = null
+        }
+    }
+
+    override fun onPause() {
+        networkCallback?.let {
+            try {
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                    ?.unregisterNetworkCallback(it)
+            } catch (e: Exception) {
+                // already gone
+            }
+        }
+        networkCallback = null
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
+        watchNetworkChanges()
         syncPanelConfigs()
         refreshFreeServers()
         if (ToolsSignal.changed) {
